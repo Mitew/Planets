@@ -1,0 +1,499 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace SpaceProgram
+{
+    class Program
+    {
+        private static readonly List<string> ALLOWED_COMMANDS = new List<string>() { "add", "stats", "list", "print", "exit" };
+        private static List<Galaxy> Galaxies = new List<Galaxy>();
+        static void Main(string[] args)
+        {
+            Console.WriteLine("Welcome to SharpConsole. Type in a command:");
+
+            while (true)
+            {
+                Console.Write("$ ");
+                var command = Console.ReadLine();
+                var command_main = command.Split(new char[] { ' ' }).First();
+
+                string[] arguments = command.Split(new char[] { ' ' }).Skip(1).ToArray();
+
+                if (ALLOWED_COMMANDS.Contains(command_main))
+                {
+                    switch (command_main)
+                    {
+                        case "add":
+                            AddCmdHandler(command[4..]); break;
+                        case "stats":
+                            StatsCmdhandler(); break;
+                        case "list":
+                            ListCmdHandler(command[5..]); break;
+                        case "print":
+                            PrintCmdHandler(command[6..]); break;
+                        case "exit":
+                            Environment.Exit(0); break;
+                        default:
+                            Console.WriteLine("Unable to parse the main command!");
+                            break;
+                    }
+                }
+                else
+                    Console.WriteLine("Command '" + command_main + "' not found");
+            }
+        }
+        private static void AddCmdHandler(string subCommand)
+        {
+            var entityToAdd = subCommand.Split(' ').FirstOrDefault();
+            switch (entityToAdd)
+            {
+                case "galaxy":
+                    {
+                        var newGalaxy = new Galaxy(subCommand[7..]);
+                        Galaxies.Add(newGalaxy);
+                    } break;
+                case "star":
+                    {
+                        var galaxyNameStart = subCommand.IndexOf('[');
+                        var galaxyNameEnd = subCommand.IndexOf(']');
+                        var galaxyName = subCommand.Substring(galaxyNameStart + 1, galaxyNameEnd - galaxyNameStart - 1);
+
+                        var newStar = new Star(subCommand[(galaxyNameEnd + 2)..]);
+
+                        var targetGalaxy = Galaxies.FirstOrDefault(g => g.Name == galaxyName);
+                        if(targetGalaxy != null)
+                            targetGalaxy.Stars.Add(newStar);
+                    } break;
+                case "planet":
+                    {
+                        var starNameStart = subCommand.IndexOf('[');
+                        var starNameEnd = subCommand.IndexOf(']');
+                        var starName = subCommand.Substring(starNameStart + 1, starNameEnd - starNameStart - 1);
+
+                        var targetStar = Galaxies.SelectMany(g => g.Stars).FirstOrDefault(s => s.Name == starName);
+                        var newPlanet = new Planet(subCommand[(starNameEnd + 2)..]);
+
+                        targetStar.Planets.Add(newPlanet);
+                    } break;
+                case "moon":
+                    {
+                        var planetNameStart = subCommand.IndexOf('[');
+                        var planetNameEnd = subCommand.IndexOf(']');
+                        var planetName = subCommand.Substring(planetNameStart + 1, planetNameEnd - planetNameStart - 1);
+
+                        var targetPlanet = Galaxies.SelectMany(g => g.Stars.SelectMany(s => s.Planets)).FirstOrDefault(p => p.Name == planetName);
+                        var newMoon = new Moon(subCommand[(planetNameEnd + 2)..]);
+
+                        targetPlanet.Moons.Add(newMoon);
+                    } break;
+                default:
+                    Console.WriteLine("Unable to parse the entity which has to be created!");
+                    break;
+            }
+        }
+
+        private static void StatsCmdhandler()
+        {
+            Console.WriteLine("--- Stats ---");
+            Console.WriteLine("Galaxies:" + Galaxy.Instances.Count);
+            Console.WriteLine("Stars:" + Star.Instances.Count);
+            Console.WriteLine("Planets:" + Planet.Instances.Count);
+            Console.WriteLine("Moons:" + Moon.Instances.Count);
+            Console.WriteLine("--- End of stats ---");
+        }
+
+        private static void ListCmdHandler(string subCommand)
+        {
+            switch (subCommand)
+            {
+                case "galaxies":
+                    {
+                        Console.WriteLine("--- List of all researched galaxies ---");
+                        foreach (var g in Galaxy.Instances)
+                        {
+                            Console.Write(g.Name + " ");
+                        }
+                        Console.WriteLine("\n--- End of galaxies list ---");
+                    } break;
+                case "stars":
+                    {
+                        Console.WriteLine("--- List of all researched stars ---");
+                        foreach (var g in Star.Instances)
+                        {
+                            Console.Write(g.Name + " ");
+                        }
+                        Console.WriteLine("\n--- End of stars list ---");
+                    }; break;
+                case "planets":
+                    {
+                        Console.WriteLine("--- List of all researched planets ---");
+                        foreach (var g in Planet.Instances)
+                        {
+                            Console.Write(g.Name + " ");
+                        }
+                        Console.WriteLine("\n--- End of stars planets ---");
+                    }; break;
+                case "moons":
+                    {
+                        Console.WriteLine("--- List of all researched moons ---");
+                        foreach (var g in Moon.Instances)
+                        {
+                            Console.Write(g.Name + " ");
+                        }
+                        Console.WriteLine("\n--- End of stars moons ---");
+                    }; break;
+            }
+        }
+
+        private static void PrintCmdHandler(string subCommand)
+        {
+            var galaxyNameStart = subCommand.IndexOf('[');
+            var galaxyNameEnd = subCommand.IndexOf(']');
+            var galaxyName = subCommand.Substring(galaxyNameStart + 1, galaxyNameEnd - galaxyNameStart - 1);
+
+            Galaxies.FirstOrDefault(g => g.Name == galaxyName).Print();
+        }
+    }
+}
+
+namespace SpaceProgram
+{
+    public abstract class SpaceObject
+    {
+        public string Name { get; set; }
+        public abstract void Print();
+    }
+}
+
+using SpaceProgram.Enums;
+using System;
+using System.Collections.Generic;
+
+namespace SpaceProgram
+{
+    public class Star : SpaceObject
+    {
+        public static List<Star> Instances = new List<Star>();
+        public StarClass Class { get; set; }
+        public List<Planet> Planets { get; set; } = new List<Planet>();
+        public Star(string commandString)
+        {
+            var nameStartIndex = commandString.IndexOf('[');
+            var nameEndIndex = commandString.IndexOf(']');
+
+            this.Name = commandString.Substring(nameStartIndex + 1, (nameEndIndex - nameStartIndex) - 1);
+
+            var otherArgs = commandString[(nameEndIndex + 2)..].Split(' ');
+            var mass = double.Parse(otherArgs[0]);
+            var size = double.Parse(otherArgs[1])/2;
+            var temp = int.Parse(otherArgs[2]);
+            var luminosity = double.Parse(otherArgs[3]);
+
+            if (temp >= 30.000 && luminosity >= 30000 && mass >= 16 && size >= 6.6)
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.O
+                };
+            if ((temp >= 10000 && temp <= 30000) && (luminosity >= 25 && luminosity <= 30000) && (mass >= 2.1 && mass <= 16) && (size >= 1.8 && size <= 6.6))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.B
+                };
+            if ((temp >= 7500 && temp <= 10000) && (luminosity >= 5 && luminosity <= 25) && (mass >= 1.4 && mass <= 2.1) && (size >= 1.4 && size <= 1.8))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.A
+                };
+            if ((temp >= 6000 && temp <= 7500) && (luminosity >= 1.5 && luminosity <= 5) && (mass >= 1.04 && mass <= 1.4) && (size >= 1.15 && size <= 1.4))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.F
+                };
+            if ((temp >= 5200 && temp <= 6000) && (luminosity >= 0.6 && luminosity <= 1.5) && (mass >= 0.8 && mass <= 1.04) && (size >= 0.96 && size <= 1.15))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.G
+                };
+            if ((temp >= 3700 && temp <= 5200) && (luminosity >= 0.08 && luminosity <= 0.6) && (mass >= 0.45 && mass <= 0.8) && (size >= 0.7 && size <= 0.96))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.K
+                };
+            if ((temp >= 2400 && temp <= 3700) && luminosity <= 0.08 && (mass >= 0.08 && mass <= 0.45) && size <= 0.7)
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.M
+                };
+
+            if(this.Class != null)
+            {
+                this.Class.Mass = mass;
+                this.Class.Size = size;
+                this.Class.Temperature = temp;
+                this.Class.Luminosity = luminosity;
+            }
+
+            Instances.Add(this);
+        }
+
+        public override void Print()
+        {
+            Console.WriteLine("Name:" + Name);
+            Console.WriteLine("Class:" + $"{Class.Id}({Class.Mass}, {Class.Size}, {Class.Temperature}, {Class.Luminosity})");
+
+            Console.WriteLine("Planets:");
+            foreach (var p in Planets)
+                p.Print();
+        }
+    }
+
+    public class StarClass
+    {
+        public StarClassTypeEnum Id { get; set; }
+        public int Temperature { get; set; }
+        public double Luminosity { get; set; }
+        public double Mass { get; set; }
+        public double Size { get; set; }
+    }
+}
+
+using SpaceProgram.Enums;
+using System;
+using System.Collections.Generic;
+
+namespace SpaceProgram
+{
+    public class Star : SpaceObject
+    {
+        public static List<Star> Instances = new List<Star>();
+        public StarClass Class { get; set; }
+        public List<Planet> Planets { get; set; } = new List<Planet>();
+        public Star(string commandString)
+        {
+            var nameStartIndex = commandString.IndexOf('[');
+            var nameEndIndex = commandString.IndexOf(']');
+
+            this.Name = commandString.Substring(nameStartIndex + 1, (nameEndIndex - nameStartIndex) - 1);
+
+            var otherArgs = commandString[(nameEndIndex + 2)..].Split(' ');
+            var mass = double.Parse(otherArgs[0]);
+            var size = double.Parse(otherArgs[1])/2;
+            var temp = int.Parse(otherArgs[2]);
+            var luminosity = double.Parse(otherArgs[3]);
+
+            if (temp >= 30.000 && luminosity >= 30000 && mass >= 16 && size >= 6.6)
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.O
+                };
+            if ((temp >= 10000 && temp <= 30000) && (luminosity >= 25 && luminosity <= 30000) && (mass >= 2.1 && mass <= 16) && (size >= 1.8 && size <= 6.6))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.B
+                };
+            if ((temp >= 7500 && temp <= 10000) && (luminosity >= 5 && luminosity <= 25) && (mass >= 1.4 && mass <= 2.1) && (size >= 1.4 && size <= 1.8))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.A
+                };
+            if ((temp >= 6000 && temp <= 7500) && (luminosity >= 1.5 && luminosity <= 5) && (mass >= 1.04 && mass <= 1.4) && (size >= 1.15 && size <= 1.4))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.F
+                };
+            if ((temp >= 5200 && temp <= 6000) && (luminosity >= 0.6 && luminosity <= 1.5) && (mass >= 0.8 && mass <= 1.04) && (size >= 0.96 && size <= 1.15))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.G
+                };
+            if ((temp >= 3700 && temp <= 5200) && (luminosity >= 0.08 && luminosity <= 0.6) && (mass >= 0.45 && mass <= 0.8) && (size >= 0.7 && size <= 0.96))
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.K
+                };
+            if ((temp >= 2400 && temp <= 3700) && luminosity <= 0.08 && (mass >= 0.08 && mass <= 0.45) && size <= 0.7)
+                this.Class = new StarClass
+                {
+                    Id = StarClassTypeEnum.M
+                };
+
+            if(this.Class != null)
+            {
+                this.Class.Mass = mass;
+                this.Class.Size = size;
+                this.Class.Temperature = temp;
+                this.Class.Luminosity = luminosity;
+            }
+
+            Instances.Add(this);
+        }
+
+        public override void Print()
+        {
+            Console.WriteLine("Name:" + Name);
+            Console.WriteLine("Class:" + $"{Class.Id}({Class.Mass}, {Class.Size}, {Class.Temperature}, {Class.Luminosity})");
+
+            Console.WriteLine("Planets:");
+            foreach (var p in Planets)
+                p.Print();
+        }
+    }
+
+    public class StarClass
+    {
+        public StarClassTypeEnum Id { get; set; }
+        public int Temperature { get; set; }
+        public double Luminosity { get; set; }
+        public double Mass { get; set; }
+        public double Size { get; set; }
+    }
+}
+
+using SpaceProgram.Enums;
+using System;
+using System.Collections.Generic;
+
+namespace SpaceProgram
+{
+    public class Planet: SpaceObject
+    {
+        public static List<Planet> Instances = new List<Planet>();
+        public PlanetTypeEnum Type { get; set; }
+        public bool IsOccupied { get; set; }
+        public List<Moon> Moons { get; set; } = new List<Moon>();
+        public Planet(string commandString)
+        {
+            var nameStartIndex = commandString.IndexOf('[');
+            var nameEndIndex = commandString.IndexOf(']');
+
+            this.Name = commandString.Substring(nameStartIndex + 1, (nameEndIndex - nameStartIndex) - 1);
+
+            var lastOccurenceOfSpace = commandString.LastIndexOf(' ');
+            var type = commandString.Substring(nameEndIndex + 2, lastOccurenceOfSpace - (nameEndIndex + 2)).ToLower();
+
+            this.Type = type switch
+            {
+                "terrestrial" => PlanetTypeEnum.Terrestrial,
+                "giant planet" => PlanetTypeEnum.GiantPlanet,
+                "ice giant" => PlanetTypeEnum.IceGiant,
+                "mesoplanet" => PlanetTypeEnum.Mesoplanet,
+                "mini-neptune" => PlanetTypeEnum.MiniNeptune,
+                "planetar" => PlanetTypeEnum.Planetar,
+                "super-earth" => PlanetTypeEnum.SuperEarth,
+                "super-jupiter" => PlanetTypeEnum.SuperJupiter,
+                "sub-earth" => PlanetTypeEnum.SuperEarth,
+                _ => throw new ArgumentException("Invalid planet type"),
+            };
+
+            var isOccupied = commandString[(lastOccurenceOfSpace + 1)..].ToLower();
+            this.IsOccupied = isOccupied == "yes";
+
+            Instances.Add(this);
+        }
+
+        public override void Print()
+        {
+            Console.WriteLine("Name:" + this.Name);
+            Console.WriteLine("Type:" + this.Type.ToString());
+            Console.WriteLine("Support life:" + this.IsOccupied.ToString());
+
+            Console.WriteLine("Moons:");
+            foreach (var m in this.Moons)
+                m.Print();
+            
+        }
+    }
+}
+
+using System;
+using System.Collections.Generic;
+
+namespace SpaceProgram
+{
+    public class Moon : SpaceObject
+    {
+        public static List<Moon> Instances = new List<Moon>();
+        public Moon(string commandString)
+        {
+            var nameStartIndex = commandString.IndexOf('[');
+            var nameEndIndex = commandString.IndexOf(']');
+
+            this.Name = commandString.Substring(nameStartIndex + 1, (nameEndIndex - nameStartIndex) - 1);
+
+            Instances.Add(this);
+        }
+
+        public override void Print()
+        {
+            Console.WriteLine(this.Name);
+        }
+    }
+}
+
+using SpaceProgram.Enums;
+using System;
+using System.Collections.Generic;
+
+namespace SpaceProgram
+{
+    public class Galaxy : SpaceObject
+    {
+        public static List<Galaxy> Instances = new List<Galaxy>();
+        public GalaxyTypeEnum Type { get; set; }
+        public GalaxyAge Age { get; set; }
+        public List<Star> Stars { get; set; } = new List<Star>() { };
+        public Galaxy(string commandString)
+        {
+            var nameStartIndex = commandString.IndexOf('[');
+            var nameEndIndex = commandString.IndexOf(']');
+
+            this.Name = commandString.Substring(nameStartIndex + 1, (nameEndIndex - nameStartIndex)-1);
+
+            var otherArgs = commandString[(nameEndIndex + 2)..].Split(' ');
+            var type = otherArgs[0];
+            var age = otherArgs[1];
+
+            this.Type = type switch
+            {
+                "elliptical" => GalaxyTypeEnum.Elliptical,
+                "lenticular" => GalaxyTypeEnum.Lenticular,
+                "spiral" => GalaxyTypeEnum.Spiral,
+                "irregular" => GalaxyTypeEnum.Irregular,
+                _ => throw new ArgumentException("Invalid galaxy type."),
+            };
+
+            this.Age = new GalaxyAge();
+            
+            var ageLiteral = age[^1..];
+            this.Age.Literal = ageLiteral switch
+            {
+                "B" => GalaxyAgeTypeEnum.B,
+                "M" => GalaxyAgeTypeEnum.M,
+                _ => throw new ArgumentException("Invalid age"),
+            };
+            this.Age.RealPart = double.Parse(age[0..^1]);
+
+            Instances.Add(this);
+        }
+
+        public override void Print()
+        {
+            Console.WriteLine($"--- Data for {Name} galaxy ---");
+            Console.WriteLine("Type:" + Type.ToString());
+            Console.WriteLine("Age:" + $"{Age.RealPart}{Age.Literal}");
+
+            Console.WriteLine("Stars:");
+            foreach (var s in Stars)
+                s.Print();
+
+            Console.WriteLine($"--- End of data for {Name} galaxy ---");
+        }
+    }
+
+    public class GalaxyAge
+    {
+        public double RealPart { get; set; }
+        public GalaxyAgeTypeEnum Literal { get; set; }
+    }
+}
